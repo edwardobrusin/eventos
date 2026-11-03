@@ -36,6 +36,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          pip install "crawl4ai>=0.4.0" "tavily-python>=0.5.0"
           playwright install --with-deps chromium
 
       - name: Ejecutar Pipeline Agéntico de Descubrimiento e Ingesta en Staging (HITL)

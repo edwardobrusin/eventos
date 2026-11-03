@@ -13,7 +13,13 @@ import json
 import os
 import sqlite3
 import time
-import tomllib
+try:
+    import tomllib
+except ModuleNotFoundError:
+    try:
+        import tomli as tomllib
+    except ModuleNotFoundError:
+        tomllib = None
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
@@ -90,7 +96,7 @@ def hash_password(raw_password: str) -> str:
 
 
 def _read_local_secrets_toml() -> Dict[str, Any]:
-    if os.path.exists(SECRETS_TOML_PATH):
+    if tomllib is not None and os.path.exists(SECRETS_TOML_PATH):
         try:
             with open(SECRETS_TOML_PATH, "rb") as f:
                 return tomllib.load(f)
@@ -138,6 +144,8 @@ def normalize_neon_database_url(raw_url: str) -> str:
     query_params = dict(parse_qsl(parsed.query, keep_blank_values=True))
     if "sslmode" not in query_params:
         query_params["sslmode"] = "require"
+    # CRÍTICO: PgBouncer de Neon (pooler) no soporta channel_binding=require y falla en Linux con SCRAM error
+    query_params.pop("channel_binding", None)
     new_query = urlencode(query_params)
     return urlunparse(parsed._replace(query=new_query))
 
@@ -1031,16 +1039,23 @@ def list_events() -> List[Dict[str, Any]]:
         return [dict(r) for r in cached]
 
     engine = get_engine()
-    with engine.connect() as conn:
-        rows = conn.execute(
-            text(
-                f"SELECT {EVENTOS_PUBLIC_COLUMNS} FROM eventos "
-                "ORDER BY fecha_inicio ASC, fecha_fin ASC, id ASC"
-            )
-        ).mappings().all()
-    res = [_serialize_row(r) for r in rows]
-    _cache_set("list_events", res)
-    return [dict(r) for r in res]
+    for attempt in range(2):
+        try:
+            with engine.connect() as conn:
+                rows = conn.execute(
+                    text(
+                        f"SELECT {EVENTOS_PUBLIC_COLUMNS} FROM eventos "
+                        "ORDER BY fecha_inicio ASC, fecha_fin ASC, id ASC"
+                    )
+                ).mappings().all()
+            res = [_serialize_row(r) for r in rows]
+            _cache_set("list_events", res)
+            return [dict(r) for r in res]
+        except Exception:
+            if attempt == 0:
+                time.sleep(1.0)
+            else:
+                raise
 
 
 def get_event_by_id(event_id: str) -> Optional[Dict[str, Any]]:
