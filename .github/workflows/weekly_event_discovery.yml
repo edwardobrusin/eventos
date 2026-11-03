@@ -1,0 +1,50 @@
+name: Descubrimiento Semanal Agéntico de Eventos (NAFIN / BANCOMEXT)
+
+on:
+  schedule:
+    # Todos los lunes a las 11:00 UTC (05:00 AM CST Ciudad de México)
+    - cron: '0 11 * * 1'
+  workflow_dispatch:
+    inputs:
+      sector_especifico:
+        description: 'Sector estratégico a explorar (o TODOS)'
+        required: false
+        default: 'TODOS'
+        type: string
+      max_urls_por_sector:
+        description: 'Máximo de URLs a procesar por sector'
+        required: false
+        default: '10'
+        type: string
+
+jobs:
+  discover-strategic-events:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Instalar dependencias Python y navegador Chromium para Crawl4AI
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          playwright install --with-deps chromium
+
+      - name: Ejecutar Pipeline Agéntico de Descubrimiento e Ingesta en Staging (HITL)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+          SECTOR_ESPECIFICO: ${{ github.event.inputs.sector_especifico || 'TODOS' }}
+          MAX_URLS_POR_SECTOR: ${{ github.event.inputs.max_urls_por_sector || '10' }}
+        run: |
+          python -m ai_discovery.pipeline --sector "$SECTOR_ESPECIFICO" --max-urls "$MAX_URLS_POR_SECTOR"
+

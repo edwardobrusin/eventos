@@ -1,0 +1,21 @@
+# Secretos y variables de entorno
+.streamlit/secrets.toml
+.env
+
+# Entornos virtuales y caché de Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Archivos temporales y herramientas locales
+dump.html
+test_frame.html
+skills/
+design-system/
+data/*.db
+data/consultas/
+*.sqlite3
+

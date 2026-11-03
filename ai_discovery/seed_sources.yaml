@@ -1,0 +1,175 @@
+# Catálogo declarativo de fuentes semilla oficiales verificadas con SSL válido y HTTP 200 (Carril 1: semilla_oficial)
+# NAFIN / BANCOMEXT — Sistema Agéntico de Descubrimiento de Eventos
+
+recintos_feriales:
+  - id: cintermex_mty_2026
+    nombre: "CINTERMEX Monterrey — Calendario Oficial 2026"
+    url: "https://www.cintermex.com/calendario/2026/11"
+    estado: "Nuevo León"
+    estado_id: "MX-NLE"
+    municipio: "Monterrey"
+    categoria_principal: "Manufactura Avanzada"
+
+  - id: cintermex_mty_2027
+    nombre: "CINTERMEX Monterrey — Calendario Oficial 2027"
+    url: "https://www.cintermex.com/calendario/2027/2"
+    estado: "Nuevo León"
+    estado_id: "MX-NLE"
+    municipio: "Monterrey"
+    categoria_principal: "Agroindustria"
+
+  - id: expo_guadalajara
+    nombre: "Expo Guadalajara"
+    url: "https://expoguadalajara.mx"
+    estado: "Jalisco"
+    estado_id: "MX-JAL"
+    municipio: "Guadalajara"
+    categoria_principal: "Manufactura Avanzada"
+
+  - id: centro_citibanamex
+    nombre: "Centro Citibanamex"
+    url: "https://centrobanamex.mx"
+    estado: "Ciudad de México"
+    estado_id: "MX-CMX"
+    municipio: "Miguel Hidalgo"
+    categoria_principal: "Comercio Exterior"
+
+  - id: wtc_cdmx
+    nombre: "World Trade Center Ciudad de México (WTC)"
+    url: "https://exposwtc.com"
+    estado: "Ciudad de México"
+    estado_id: "MX-CMX"
+    municipio: "Benito Juárez"
+    categoria_principal: "Comercio Exterior"
+
+  - id: expo_santa_fe
+    nombre: "Expo Santa Fe México"
+    url: "https://www.exposantafe.com.mx"
+    estado: "Ciudad de México"
+    estado_id: "MX-CMX"
+    municipio: "Álvaro Obregón"
+    categoria_principal: "Automotriz y Aeroespacial"
+
+  - id: poliforum_leon
+    nombre: "Poliforum León"
+    url: "https://www.poliforumleon.com.mx/eventos"
+    estado: "Guanajuato"
+    estado_id: "MX-GUA"
+    municipio: "León"
+    categoria_principal: "Manufactura Avanzada"
+
+  - id: centro_expositor_puebla
+    nombre: "Centro Expositor Puebla"
+    url: "https://convencionespuebla.mx/eventos/"
+    estado: "Puebla"
+    estado_id: "MX-PUE"
+    municipio: "Puebla"
+    categoria_principal: "Manufactura Avanzada"
+
+  - id: expo_chihuahua
+    nombre: "Centro de Exposiciones y Convenciones Expo Chihuahua"
+    url: "https://expochihuahua.com.mx"
+    estado: "Chihuahua"
+    estado_id: "MX-CHH"
+    municipio: "Chihuahua"
+    categoria_principal: "Automotriz y Aeroespacial"
+
+  - id: centro_convenciones_slp
+    nombre: "Clúster Automotriz y Centro de Negocios de San Luis Potosí"
+    url: "https://www.clusterautomotrizslp.com/"
+    estado: "San Luis Potosí"
+    estado_id: "MX-SLP"
+    municipio: "San Luis Potosí"
+    categoria_principal: "Automotriz y Aeroespacial"
+
+camaras_empresariales:
+  - id: igeco_hannover_fairs
+    nombre: "Italian German Exhibition Company / Hannover Fairs México"
+    url: "https://igeco.mx/eventos/"
+    estado: "Jalisco"
+    estado_id: "MX-JAL"
+    categoria_principal: "Manufactura Avanzada"
+
+  - id: mexico_business_events
+    nombre: "Mexico Business Events — Cumbres Sectoriales B2B"
+    url: "https://mexicobusiness.events/"
+    estado: "Ciudad de México"
+    estado_id: "MX-CMX"
+    categoria_principal: "Comercio Exterior"
+
+  - id: expo_manufactura_oficial
+    nombre: "Expo Manufactura Monterrey — Sitio Oficial"
+    url: "https://expomanufactura.com.mx/"
+    estado: "Nuevo León"
+    estado_id: "MX-NLE"
+    categoria_principal: "Manufactura Avanzada"
+
+  - id: ina_autopartes
+    nombre: "Industria Nacional de Autopartes (INA)"
+    url: "https://ina.com.mx/eventos/"
+    estado: "Ciudad de México"
+    estado_id: "MX-CMX"
+    categoria_principal: "Automotriz y Aeroespacial"
+
+  - id: comce_nacional
+    nombre: "Consejo Empresarial Mexicano de Comercio Exterior, Inversión y Tecnología (COMCE)"
+    url: "https://comce.org.mx/eventos/"
+    estado: "Ciudad de México"
+    estado_id: "MX-CMX"
+    categoria_principal: "Comercio Exterior"
+
+  - id: femia_aeroespacial
+    nombre: "Federación Mexicana de la Industria Aeroespacial (FEMIA)"
+    url: "https://femiamx.com/"
+    estado: "Querétaro"
+    estado_id: "MX-QUE"
+    categoria_principal: "Automotriz y Aeroespacial"
+
+  - id: amia_automotriz
+    nombre: "Cadena de Proveedores de la Industria en México (CAPIM)"
+    url: "https://new.capim.com.mx/"
+    estado: "Ciudad de México"
+    estado_id: "MX-CMX"
+    categoria_principal: "Automotriz y Aeroespacial"
+
+  - id: canieti_tech
+    nombre: "Cámara Nacional de la Industria Electrónica, de Telecomunicaciones y TI (CANIETI)"
+    url: "https://canieti.org/"
+    estado: "Ciudad de México"
+    estado_id: "MX-CMX"
+    categoria_principal: "Semiconductores y Tech"
+
+  - id: canacintra_nacional
+    nombre: "Cámara Nacional de la Industria de Transformación (CANACINTRA)"
+    url: "https://canacintra.org.mx"
+    estado: "Ciudad de México"
+    estado_id: "MX-CMX"
+    categoria_principal: "Manufactura Avanzada"
+
+  - id: aniq_quimica
+    nombre: "Asociación Nacional de la Industria Química (ANIQ)"
+    url: "https://aniq.org.mx/webpublico/"
+    estado: "Ciudad de México"
+    estado_id: "MX-CMX"
+    categoria_principal: "Plásticos y Químicos"
+
+  - id: amid_medicos
+    nombre: "Asociación Mexicana de Industrias Innovadoras de Dispositivos Médicos (AMID)"
+    url: "https://amid.org.mx"
+    estado: "Ciudad de México"
+    estado_id: "MX-CMX"
+    categoria_principal: "Dispositivos Médicos"
+
+  - id: cna_agropecuario
+    nombre: "Consejo Nacional Agropecuario (CNA)"
+    url: "https://cna.org.mx"
+    estado: "Ciudad de México"
+    estado_id: "MX-CMX"
+    categoria_principal: "Agroindustria"
+
+  - id: cnet_turismo
+    nombre: "Consejo Nacional Empresarial Turístico (CNET)"
+    url: "https://www.cnet.org.mx"
+    estado: "Ciudad de México"
+    estado_id: "MX-CMX"
+    categoria_principal: "Turismo"
