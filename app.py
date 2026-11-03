@@ -44,7 +44,24 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-db.init_db()
+
+@st.cache_resource(show_spinner=False)
+def ensure_db_ready() -> None:
+    try:
+        db.init_db()
+    except Exception:
+        pass
+
+
+ensure_db_ready()
+
+
+@st.cache_data(show_spinner=False, ttl=60)
+def get_cached_events() -> List[Dict[str, Any]]:
+    try:
+        return db.list_events()
+    except Exception:
+        return []
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 GEOJSON_PATH = os.path.join(BASE_DIR, "data", "mexico_states.geojson")
@@ -160,10 +177,8 @@ def inject_executive_css() -> None:
     st.markdown(
         """
         <style>
-        @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
-
         html, body, [class*="css"], .stApp {
-            font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif !important;
+            font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif !important;
             color: #0F172A;
             background-color: #F8FAFC !important;
         }
@@ -722,6 +737,7 @@ def open_event_detail_dialog(event_id: str) -> None:
         with col_del:
             if st.button("Eliminar Evento", key=f"del_ev_{ev['id']}", width="stretch"):
                 db.delete_event(ev["id"])
+                get_cached_events.clear()
                 st.rerun()
 
 
@@ -895,6 +911,7 @@ def open_review_staging_dialog(staging_id: str) -> None:
                     reviewed_by=current_username,
                 )
                 st.session_state.pop(geo_override_key, None)
+                get_cached_events.clear()
                 st.success(f"Evento publicado oficialmente como {official_id} y alertas (.ics) despachadas.")
                 st.rerun()
 
@@ -903,7 +920,7 @@ def open_review_staging_dialog(staging_id: str) -> None:
 # PREPARACIÓN DE DATOS Y ENRIQUECIMIENTO TEMPORAL
 # ---------------------------------------------------------------------------
 ref_date: dt.date = st.session_state.reference_date
-raw_events = db.list_events()
+raw_events = get_cached_events()
 
 enriched_events: List[Dict[str, Any]] = []
 for item in raw_events:
@@ -1785,6 +1802,7 @@ if role_meta["puede_registrar_eventos"]:
                         created_by=(st.session_state.auth_user or {}).get("username", "director"),
                     )
                     st.session_state.parsed_geo = None
+                    get_cached_events.clear()
                     st.success(f"Evento {created_id} guardado.")
                     st.rerun()
 
@@ -2049,6 +2067,7 @@ if role_meta["puede_registrar_eventos"]:
                                     motivo_descarte=motivos_map[motivo_label],
                                     reviewed_by=current_username,
                                 )
+                                get_cached_events.clear()
                                 st.rerun()
 
 
