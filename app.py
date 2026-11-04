@@ -1713,7 +1713,14 @@ if role_meta["puede_registrar_eventos"]:
             "google_maps_url": "",
         }
 
-        with st.form("register_event_form", clear_on_submit=False):
+        if st.session_state.get("last_created_event_info"):
+            info = st.session_state.pop("last_created_event_info")
+            st.success(
+                f"✅ **Evento Registrado Exitosamente**: Folio **{info['id']}** — *{info['nombre']}* "
+                f"({info['fecha_inicio']}). El formulario ha sido limpiado y está listo para otro registro."
+            )
+
+        with st.form("register_event_form", clear_on_submit=True):
             fc1, fc2, fc3 = st.columns([1.2, 3.2, 1.6])
             with fc1:
                 next_id = db.generate_next_event_id()
@@ -1770,41 +1777,56 @@ if role_meta["puede_registrar_eventos"]:
             save_ev_btn = st.form_submit_button("Guardar Evento", type="primary", width="stretch")
             if save_ev_btn:
                 if not ev_nombre_in.strip() or not ev_desc_in.strip():
-                    st.error("Nombre y descripción son obligatorios.")
+                    st.error("⚠️ Nombre y descripción son campos obligatorios. No es posible guardar el formulario vacío.")
                 elif d_end < d_start:
-                    st.error("La fecha fin no puede ser anterior a la fecha inicio.")
+                    st.error("⚠️ La fecha fin no puede ser anterior a la fecha inicio.")
                 else:
-                    final_gmaps = ev_gmaps_in.strip()
-                    if not final_gmaps and ev_mod_in != "En Línea":
-                        final_gmaps = f"https://www.google.com/maps/search/?api=1&query={ev_lat_in},{ev_lon_in}"
+                    # Candado anti-duplicados UI
+                    existing_dup = db.find_exact_duplicate(ev_nombre_in, d_start.isoformat())
+                    if existing_dup:
+                        st.warning(
+                            f"⚠️ **Evento ya registrado**: Ya existe un evento idéntico con el nombre "
+                            f"**{ev_nombre_in.strip()}** para el **{d_start.strftime('%d/%m/%Y')}** "
+                            f"(Folio existente: **{existing_dup['id']}**). "
+                            f"Por seguridad institucional, no se permiten duplicados."
+                        )
+                    else:
+                        with st.spinner("Guardando evento en Neon PostgreSQL..."):
+                            final_gmaps = ev_gmaps_in.strip()
+                            if not final_gmaps and ev_mod_in != "En Línea":
+                                final_gmaps = f"https://www.google.com/maps/search/?api=1&query={ev_lat_in},{ev_lon_in}"
 
-                    created_id = db.create_event(
-                        {
-                            "id": ev_id_in.strip(),
-                            "nombre": ev_nombre_in,
-                            "descripcion": ev_desc_in,
-                            "fecha_inicio": d_start.isoformat(),
-                            "fecha_fin": d_end.isoformat(),
-                            "horario": ev_horario_in,
-                            "modalidad": ev_mod_in,
-                            "sede": ev_sede_in,
-                            "direccion": ev_dir_in,
-                            "estado": ev_estado_in,
-                            "municipio": ev_muni_in,
-                            "codigo_postal": ev_cp_in,
-                            "latitud": ev_lat_in,
-                            "longitud": ev_lon_in,
-                            "google_maps_url": final_gmaps,
-                            "categoria": ev_cat_in,
-                            "promotor": ev_promotor_in,
-                            "sitio_web": ev_web_in,
-                        },
-                        created_by=(st.session_state.auth_user or {}).get("username", "director"),
-                    )
-                    st.session_state.parsed_geo = None
-                    get_cached_events.clear()
-                    st.success(f"Evento {created_id} guardado.")
-                    st.rerun()
+                            created_id = db.create_event(
+                                {
+                                    "id": ev_id_in.strip(),
+                                    "nombre": ev_nombre_in,
+                                    "descripcion": ev_desc_in,
+                                    "fecha_inicio": d_start.isoformat(),
+                                    "fecha_fin": d_end.isoformat(),
+                                    "horario": ev_horario_in,
+                                    "modalidad": ev_mod_in,
+                                    "sede": ev_sede_in,
+                                    "direccion": ev_dir_in,
+                                    "estado": ev_estado_in,
+                                    "municipio": ev_muni_in,
+                                    "codigo_postal": ev_cp_in,
+                                    "latitud": ev_lat_in,
+                                    "longitud": ev_lon_in,
+                                    "google_maps_url": final_gmaps,
+                                    "categoria": ev_cat_in,
+                                    "promotor": ev_promotor_in,
+                                    "sitio_web": ev_web_in,
+                                },
+                                created_by=(st.session_state.auth_user or {}).get("username", "director"),
+                            )
+                            st.session_state.parsed_geo = None
+                            get_cached_events.clear()
+                            st.session_state.last_created_event_info = {
+                                "id": created_id,
+                                "nombre": ev_nombre_in.strip(),
+                                "fecha_inicio": d_start.strftime("%d/%m/%Y"),
+                            }
+                            st.rerun()
 
     # =======================================================================
     # VISTA 3B: BANDEJA DE ENTRADA IA (HITL — EXCLUSIVO DIRECTOR L3 / ADMIN L4)

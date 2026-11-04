@@ -11,6 +11,7 @@ import datetime as dt
 import hashlib
 import json
 import os
+import re
 import sqlite3
 import time
 try:
@@ -735,6 +736,10 @@ def init_db(force: bool = False) -> None:
                     ).mappings().first()
                     if chk and int(chk["tables_ready"] or 0) == 4 and int(chk["ev_cnt"] or 0) > 0 and int(chk["usr_cnt"] or 0) > 0:
                         _DB_INITIALIZED = True
+                        try:
+                            cleanup_duplicate_events()
+                        except Exception:
+                            pass
                         return
             except Exception:
                 if attempt == 0:
@@ -1100,11 +1105,86 @@ def generate_next_event_id() -> str:
     return f"EVT-{year_mx}-{max_num + 1:03d}"
 
 
+def find_exact_duplicate(
+    nombre: str, fecha_inicio: str, exclude_id: str = ""
+) -> Optional[Dict[str, Any]]:
+    """
+    Busca si ya existe un evento registrado con el mismo nombre y fecha de inicio.
+    Normaliza espacios y mayúsculas/minúsculas para evitar variaciones mecánicas o dobles clics.
+    """
+    norm_name = re.sub(r"\s+", " ", (nombre or "").strip().lower())
+    if not norm_name or not fecha_inicio:
+        return None
+    f_ini_str = str(fecha_inicio)[:10]
+    engine = get_engine()
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text("SELECT id, nombre, fecha_inicio, estado FROM eventos WHERE fecha_inicio = :f_ini"),
+            {"f_ini": f_ini_str},
+        ).mappings().all()
+        for r in rows:
+            if exclude_id and r["id"] == exclude_id:
+                continue
+            r_norm = re.sub(r"\s+", " ", (r["nombre"] or "").strip().lower())
+            if r_norm == norm_name:
+                return dict(r)
+    return None
+
+
+def cleanup_duplicate_events() -> int:
+    """
+    Busca eventos con el mismo nombre y misma fecha de inicio.
+    Conserva el registro más antiguo (menor ID) y elimina los duplicados exactos.
+    Devuelve la cantidad de registros duplicados eliminados.
+    """
+    engine = get_engine()
+    deleted_count = 0
+    with engine.begin() as conn:
+        rows = conn.execute(
+            text(
+                """
+                SELECT lower(trim(nombre)) as norm_name, fecha_inicio, array_agg(id ORDER BY id ASC) as ids
+                FROM eventos
+                GROUP BY lower(trim(nombre)), fecha_inicio
+                HAVING count(*) > 1
+                """
+            )
+        ).mappings().all()
+
+        for r in rows:
+            ids = list(r["ids"])
+            if len(ids) > 1:
+                ids_to_delete = ids[1:]
+                for dup_id in ids_to_delete:
+                    conn.execute(
+                        text("DELETE FROM bitacora_notificaciones WHERE evento_id = :id"),
+                        {"id": dup_id},
+                    )
+                    conn.execute(
+                        text("DELETE FROM eventos WHERE id = :id"),
+                        {"id": dup_id},
+                    )
+                    deleted_count += 1
+
+    if deleted_count > 0:
+        invalidate_cache()
+    return deleted_count
+
+
 def create_event(
     payload: Dict[str, Any],
     created_by: str = "director",
     huella_semantica: Optional[List[float]] = None,
 ) -> str:
+    # Candado estricto anti-duplicados: si ya existe un evento con el mismo nombre y fecha_inicio
+    dup = find_exact_duplicate(
+        payload.get("nombre", ""),
+        payload.get("fecha_inicio", ""),
+        exclude_id=payload.get("id", ""),
+    )
+    if dup:
+        return str(dup["id"])
+
     event_id = payload.get("id") or generate_next_event_id()
     now_str = dt.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
     modalidad = payload.get("modalidad", "Presencial")
