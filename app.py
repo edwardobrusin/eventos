@@ -84,7 +84,7 @@ MESES_ES = {
 }
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_resource(show_spinner=False)
 def load_mexico_geojson() -> Dict[str, Any]:
     with open(GEOJSON_PATH, encoding="utf-8") as f:
         return json.load(f)
@@ -98,13 +98,13 @@ def load_logo_b64(path: str) -> str:
         return base64.b64encode(f.read()).decode("utf-8")
 
 
-@st.cache_data(show_spinner=False, ttl=120)
+@st.cache_data(show_spinner=False, ttl=600)
 def cached_agenda_pdf(events_json: str, title: str, logo_nafin: str, logo_bancomext: str) -> bytes:
     evs = json.loads(events_json)
     return generate_agenda_pdf(evs, title=title, logo_nafin=logo_nafin, logo_bancomext=logo_bancomext)
 
 
-@st.cache_data(show_spinner=False, ttl=120)
+@st.cache_data(show_spinner=False, ttl=600)
 def cached_calendar_grid_pdf(
     events_json: str, year: int, month: int, month_name: str, logo_nafin: str, logo_bancomext: str
 ) -> bytes:

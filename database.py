@@ -153,7 +153,7 @@ def normalize_neon_database_url(raw_url: str) -> str:
 _ENGINE: Optional[Engine] = None
 _DB_INITIALIZED: bool = False
 _CACHE: Dict[str, Tuple[float, Any]] = {}
-_CACHE_TTL_SECONDS: float = 45.0
+_CACHE_TTL_SECONDS: float = 300.0
 
 
 def invalidate_cache() -> None:
@@ -180,7 +180,7 @@ def _cache_set(key: str, val: Any) -> Any:
 def get_engine() -> Engine:
     """
     Devuelve el Engine singleton de SQLAlchemy configurado con protección contra
-    cold-starts y suspensión de cómputo de Neon Serverless PostgreSQL.
+    cold-starts, half-open sockets y suspensión de cómputo de Neon Serverless PostgreSQL.
     """
     global _ENGINE
     if _ENGINE is not None:
@@ -192,16 +192,18 @@ def get_engine() -> Engine:
     _ENGINE = create_engine(
         DATABASE_URL,
         poolclass=QueuePool,
-        pool_size=5,
-        max_overflow=10,
+        pool_size=2,
+        max_overflow=5,
+        pool_timeout=10,
         pool_pre_ping=True,        # CRÍTICO para Neon: verifica que la conexión esté viva antes de cada query
-        pool_recycle=300,          # Recicla conexiones antes del corte de inactividad de 5 min de Neon
+        pool_recycle=60,           # Recicla conexiones a los 60s antes de que PgBouncer/NAT mate el socket silenciosamente
         connect_args={
-            "connect_timeout": 15, # Tolera el cold-start (~300-800ms) de Neon
+            "connect_timeout": 10, # Tolera el cold-start (~300-800ms) de Neon
             "keepalives": 1,
-            "keepalives_idle": 30,
-            "keepalives_interval": 10,
-            "keepalives_count": 5,
+            "keepalives_idle": 10,
+            "keepalives_interval": 5,
+            "keepalives_count": 3,
+            "tcp_user_timeout": 10000, # CRÍTICO PARA LINUX: descarta sockets muertos a los 10 seg (evita cuelgues de 2-5 min)
         },
     )
     return _ENGINE
@@ -714,25 +716,27 @@ def init_db(force: bool = False) -> None:
 
     engine = get_engine()
     if not force:
-        try:
-            with engine.connect() as conn:
-                chk = conn.execute(
-                    text(
-                        """
-                        SELECT
-                            (SELECT COUNT(*) FROM information_schema.tables
-                             WHERE table_schema = 'public'
-                               AND table_name IN ('eventos', 'usuarios', 'bitacora_notificaciones', 'eventos_pendientes_ia')) AS tables_ready,
-                            (SELECT COUNT(*) FROM eventos) AS ev_cnt,
-                            (SELECT COUNT(*) FROM usuarios) AS usr_cnt
-                        """
-                    )
-                ).mappings().first()
-                if chk and int(chk["tables_ready"] or 0) == 4 and int(chk["ev_cnt"] or 0) > 0 and int(chk["usr_cnt"] or 0) > 0:
-                    _DB_INITIALIZED = True
-                    return
-        except Exception:
-            pass
+        for attempt in range(2):
+            try:
+                with engine.connect() as conn:
+                    chk = conn.execute(
+                        text(
+                            """
+                            SELECT
+                                (SELECT COUNT(*) FROM information_schema.tables
+                                 WHERE table_schema = 'public'
+                                   AND table_name IN ('eventos', 'usuarios', 'bitacora_notificaciones', 'eventos_pendientes_ia')) AS tables_ready,
+                                (SELECT COUNT(*) FROM eventos) AS ev_cnt,
+                                (SELECT COUNT(*) FROM usuarios) AS usr_cnt
+                            """
+                        )
+                    ).mappings().first()
+                    if chk and int(chk["tables_ready"] or 0) == 4 and int(chk["ev_cnt"] or 0) > 0 and int(chk["usr_cnt"] or 0) > 0:
+                        _DB_INITIALIZED = True
+                        return
+            except Exception:
+                if attempt == 0:
+                    time.sleep(1.0)
 
     now_str = dt.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
 
@@ -1019,7 +1023,7 @@ def init_db(force: bool = False) -> None:
 
     _DB_INITIALIZED = True
     invalidate_cache()
-    export_events_json_snapshot()
+    # Evitamos export_events_json_snapshot() durante el arranque para no provocar escrituras calientes en disco
 
 
 def export_events_json_snapshot() -> None:
