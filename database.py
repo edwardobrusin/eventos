@@ -45,6 +45,8 @@ CATEGORIES = [
     "Turismo",
     "Dispositivos Médicos",
     "Plásticos y Químicos",
+    "Electromovilidad",
+    "Equipos de Generación y Distribución Eléctrica",
 ]
 
 ROLES_CONFIG = {

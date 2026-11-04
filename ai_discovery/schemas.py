@@ -22,6 +22,8 @@ CATEGORIAS_OFICIALES = Literal[
     "Turismo",
     "Dispositivos Médicos",
     "Plásticos y Químicos",
+    "Electromovilidad",
+    "Equipos de Generación y Distribución Eléctrica",
 ]
 
 DOMINIOS_ACORTADORES_PROHIBIDOS = {

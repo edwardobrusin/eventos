@@ -173,3 +173,17 @@ camaras_empresariales:
     estado: "Ciudad de México"
     estado_id: "MX-CMX"
     categoria_principal: "Turismo"
+
+  - id: amive_electromovilidad
+    nombre: "Asociación Mexicana de Impulso al Vehículo Eléctrico (AMIVE)"
+    url: "https://amive.org/"
+    estado: "Ciudad de México"
+    estado_id: "MX-CMX"
+    categoria_principal: "Electromovilidad"
+
+  - id: caname_electricos
+    nombre: "Cámara Nacional de Manufacturas Eléctricas (CANAME)"
+    url: "https://caname.org.mx/"
+    estado: "Ciudad de México"
+    estado_id: "MX-CMX"
+    categoria_principal: "Equipos de Generación y Distribución Eléctrica"
