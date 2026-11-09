@@ -44,6 +44,7 @@ CATEGORIES = [
     "Semiconductores y Tech",
     "Agroindustria",
     "Turismo",
+    "Turismo Médico",
     "Dispositivos Médicos",
     "Plásticos y Químicos",
     "Electromovilidad",
@@ -235,7 +236,7 @@ EVENTOS_PUBLIC_COLUMNS = (
     "id, nombre, descripcion, fecha_inicio, fecha_fin, horario, "
     "modalidad, sede, direccion, estado, estado_id, municipio, "
     "codigo_postal, latitud, longitud, google_maps_url, "
-    "categoria, promotor, sitio_web, creado_por, created_at, updated_at"
+    "categoria, promotor, sitio_web, responsable, creado_por, created_at, updated_at"
 )
 
 
@@ -729,12 +730,22 @@ def init_db(force: bool = False) -> None:
                                 (SELECT COUNT(*) FROM information_schema.tables
                                  WHERE table_schema = 'public'
                                    AND table_name IN ('eventos', 'usuarios', 'bitacora_notificaciones', 'eventos_pendientes_ia')) AS tables_ready,
+                                (SELECT COUNT(*) FROM information_schema.columns
+                                 WHERE table_schema = 'public'
+                                   AND table_name = 'eventos'
+                                   AND column_name = 'responsable') AS col_responsable,
                                 (SELECT COUNT(*) FROM eventos) AS ev_cnt,
                                 (SELECT COUNT(*) FROM usuarios) AS usr_cnt
                             """
                         )
                     ).mappings().first()
-                    if chk and int(chk["tables_ready"] or 0) == 4 and int(chk["ev_cnt"] or 0) > 0 and int(chk["usr_cnt"] or 0) > 0:
+                    if (
+                        chk
+                        and int(chk["tables_ready"] or 0) == 4
+                        and int(chk["col_responsable"] or 0) > 0
+                        and int(chk["ev_cnt"] or 0) > 0
+                        and int(chk["usr_cnt"] or 0) > 0
+                    ):
                         _DB_INITIALIZED = True
                         try:
                             cleanup_duplicate_events()
@@ -773,6 +784,7 @@ def init_db(force: bool = False) -> None:
                     categoria TEXT NOT NULL,
                     promotor TEXT DEFAULT 'NAFIN / BANCOMEXT',
                     sitio_web TEXT DEFAULT '',
+                    responsable TEXT DEFAULT 'NAFIN / BANCOMEXT',
                     creado_por TEXT DEFAULT 'sistema',
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
@@ -784,6 +796,12 @@ def init_db(force: bool = False) -> None:
 
         conn.execute(
             text("ALTER TABLE eventos ADD COLUMN IF NOT EXISTS huella_semantica vector(768);")
+        )
+        conn.execute(
+            text("ALTER TABLE eventos ADD COLUMN IF NOT EXISTS responsable TEXT DEFAULT 'NAFIN / BANCOMEXT';")
+        )
+        conn.execute(
+            text("UPDATE eventos SET responsable = creado_por WHERE responsable IS NULL OR responsable = '';")
         )
 
         conn.execute(
@@ -916,12 +934,12 @@ def init_db(force: bool = False) -> None:
                             id, nombre, descripcion, fecha_inicio, fecha_fin, horario,
                             modalidad, sede, direccion, estado, estado_id, municipio,
                             codigo_postal, latitud, longitud, google_maps_url,
-                            categoria, promotor, sitio_web, creado_por, created_at, updated_at
+                            categoria, promotor, sitio_web, responsable, creado_por, created_at, updated_at
                         ) VALUES (
                             :id, :nombre, :descripcion, :fecha_inicio, :fecha_fin, :horario,
                             :modalidad, :sede, :direccion, :estado, :estado_id, :municipio,
                             :codigo_postal, :latitud, :longitud, :google_maps_url,
-                            :categoria, :promotor, :sitio_web, :creado_por, :created_at, :updated_at
+                            :categoria, :promotor, :sitio_web, :responsable, :creado_por, :created_at, :updated_at
                         ) ON CONFLICT (id) DO NOTHING
                         """
                     ),
@@ -945,6 +963,7 @@ def init_db(force: bool = False) -> None:
                         "categoria": ev["categoria"],
                         "promotor": ev["promotor"],
                         "sitio_web": ev["sitio_web"],
+                        "responsable": ev.get("responsable") or ev.get("creado_por") or "NAFIN / BANCOMEXT",
                         "creado_por": ev["creado_por"],
                         "created_at": now_str,
                         "updated_at": now_str,
@@ -1195,6 +1214,7 @@ def create_event(
         st_norm = normalize_state_name(payload.get("estado", "Ciudad de México"))
         st_id = get_state_id(st_norm)
 
+    responsable = str(payload.get("responsable") or created_by or "NAFIN / BANCOMEXT").strip()
     vec_literal = _format_vector_literal(huella_semantica)
     engine = get_engine()
     with engine.begin() as conn:
@@ -1206,13 +1226,13 @@ def create_event(
                         id, nombre, descripcion, fecha_inicio, fecha_fin, horario,
                         modalidad, sede, direccion, estado, estado_id, municipio,
                         codigo_postal, latitud, longitud, google_maps_url,
-                        categoria, promotor, sitio_web, creado_por, created_at, updated_at,
+                        categoria, promotor, sitio_web, responsable, creado_por, created_at, updated_at,
                         huella_semantica
                     ) VALUES (
                         :id, :nombre, :descripcion, :fecha_inicio, :fecha_fin, :horario,
                         :modalidad, :sede, :direccion, :estado, :estado_id, :municipio,
                         :codigo_postal, :latitud, :longitud, :google_maps_url,
-                        :categoria, :promotor, :sitio_web, :creado_por, :created_at, :updated_at,
+                        :categoria, :promotor, :sitio_web, :responsable, :creado_por, :created_at, :updated_at,
                         CAST(:huella_semantica AS vector)
                     )
                     ON CONFLICT (id) DO UPDATE SET
@@ -1234,6 +1254,7 @@ def create_event(
                         categoria = EXCLUDED.categoria,
                         promotor = EXCLUDED.promotor,
                         sitio_web = EXCLUDED.sitio_web,
+                        responsable = EXCLUDED.responsable,
                         creado_por = EXCLUDED.creado_por,
                         updated_at = EXCLUDED.updated_at,
                         huella_semantica = EXCLUDED.huella_semantica
@@ -1259,6 +1280,7 @@ def create_event(
                     "categoria": payload.get("categoria", CATEGORIES[0]),
                     "promotor": str(payload.get("promotor") or "NAFIN / BANCOMEXT").strip(),
                     "sitio_web": str(payload.get("sitio_web") or "").strip(),
+                    "responsable": responsable,
                     "creado_por": created_by,
                     "created_at": now_str,
                     "updated_at": now_str,
@@ -1273,12 +1295,12 @@ def create_event(
                         id, nombre, descripcion, fecha_inicio, fecha_fin, horario,
                         modalidad, sede, direccion, estado, estado_id, municipio,
                         codigo_postal, latitud, longitud, google_maps_url,
-                        categoria, promotor, sitio_web, creado_por, created_at, updated_at
+                        categoria, promotor, sitio_web, responsable, creado_por, created_at, updated_at
                     ) VALUES (
                         :id, :nombre, :descripcion, :fecha_inicio, :fecha_fin, :horario,
                         :modalidad, :sede, :direccion, :estado, :estado_id, :municipio,
                         :codigo_postal, :latitud, :longitud, :google_maps_url,
-                        :categoria, :promotor, :sitio_web, :creado_por, :created_at, :updated_at
+                        :categoria, :promotor, :sitio_web, :responsable, :creado_por, :created_at, :updated_at
                     )
                     ON CONFLICT (id) DO UPDATE SET
                         nombre = EXCLUDED.nombre,
@@ -1299,6 +1321,7 @@ def create_event(
                         categoria = EXCLUDED.categoria,
                         promotor = EXCLUDED.promotor,
                         sitio_web = EXCLUDED.sitio_web,
+                        responsable = EXCLUDED.responsable,
                         creado_por = EXCLUDED.creado_por,
                         updated_at = EXCLUDED.updated_at
                     """
@@ -1323,6 +1346,7 @@ def create_event(
                     "categoria": payload.get("categoria", CATEGORIES[0]),
                     "promotor": str(payload.get("promotor") or "NAFIN / BANCOMEXT").strip(),
                     "sitio_web": str(payload.get("sitio_web") or "").strip(),
+                    "responsable": responsable,
                     "creado_por": created_by,
                     "created_at": now_str,
                     "updated_at": now_str,
@@ -1331,6 +1355,162 @@ def create_event(
     invalidate_cache()
     export_events_json_snapshot()
     return event_id
+
+
+def update_event(
+    event_id: str,
+    payload: Dict[str, Any],
+    updated_by: str = "director",
+) -> bool:
+    """
+    Actualiza un evento existente en la base de datos (Edición por Director/Admin):
+    - Permite corregir typos, cambios de fechas, sede, modalidad, etc.
+    - Preserva o actualiza la huella semántica si los módulos IA están disponibles.
+    """
+    existing = get_event_by_id(event_id)
+    if not existing:
+        return False
+
+    modalidad = payload.get("modalidad", existing.get("modalidad", "Presencial"))
+    if modalidad in ("En Línea", "Virtual"):
+        st_norm = "En Línea" if modalidad == "En Línea" else "Ciudad de México"
+        st_id = "ONLINE"
+    else:
+        st_norm = normalize_state_name(payload.get("estado", existing.get("estado", "Ciudad de México")))
+        st_id = get_state_id(st_norm)
+
+    now_str = dt.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+
+    # Intentar generar huella semántica si deduplicator está disponible
+    vec_literal = None
+    try:
+        from ai_discovery.deduplicator import build_huella_text, generate_semantic_embedding
+        h_text = build_huella_text({
+            "nombre": payload.get("nombre", existing.get("nombre")),
+            "categoria": payload.get("categoria", existing.get("categoria")),
+            "sede": payload.get("sede", existing.get("sede")),
+            "municipio": payload.get("municipio", existing.get("municipio")),
+            "estado": st_norm,
+            "descripcion": payload.get("descripcion", existing.get("descripcion")),
+        })
+        vec = generate_semantic_embedding(h_text)
+        if vec:
+            vec_literal = _format_vector_literal(vec)
+    except Exception:
+        pass
+
+    engine = get_engine()
+    with engine.begin() as conn:
+        if vec_literal:
+            conn.execute(
+                text(
+                    """
+                    UPDATE eventos SET
+                        nombre = :nombre,
+                        descripcion = :descripcion,
+                        fecha_inicio = :fecha_inicio,
+                        fecha_fin = :fecha_fin,
+                        horario = :horario,
+                        modalidad = :modalidad,
+                        sede = :sede,
+                        direccion = :direccion,
+                        estado = :estado,
+                        estado_id = :estado_id,
+                        municipio = :municipio,
+                        codigo_postal = :codigo_postal,
+                        latitud = :latitud,
+                        longitud = :longitud,
+                        google_maps_url = :google_maps_url,
+                        categoria = :categoria,
+                        promotor = :promotor,
+                        sitio_web = :sitio_web,
+                        responsable = :responsable,
+                        updated_at = :updated_at,
+                        huella_semantica = CAST(:huella_semantica AS vector)
+                    WHERE id = :id
+                    """
+                ),
+                {
+                    "id": event_id,
+                    "nombre": str(payload.get("nombre", existing.get("nombre"))).strip(),
+                    "descripcion": str(payload.get("descripcion", existing.get("descripcion"))).strip(),
+                    "fecha_inicio": str(payload.get("fecha_inicio", existing.get("fecha_inicio")))[:10],
+                    "fecha_fin": str(payload.get("fecha_fin", existing.get("fecha_fin")))[:10],
+                    "horario": str(payload.get("horario", existing.get("horario"))).strip(),
+                    "modalidad": modalidad,
+                    "sede": str(payload.get("sede", existing.get("sede"))).strip(),
+                    "direccion": str(payload.get("direccion", existing.get("direccion"))).strip(),
+                    "estado": st_norm,
+                    "estado_id": st_id,
+                    "municipio": str(payload.get("municipio", existing.get("municipio"))).strip(),
+                    "codigo_postal": str(payload.get("codigo_postal", existing.get("codigo_postal"))).strip(),
+                    "latitud": float(payload.get("latitud", existing.get("latitud", 19.4326))),
+                    "longitud": float(payload.get("longitud", existing.get("longitud", -99.1332))),
+                    "google_maps_url": str(payload.get("google_maps_url", existing.get("google_maps_url"))).strip(),
+                    "categoria": payload.get("categoria", existing.get("categoria")),
+                    "promotor": str(payload.get("promotor", existing.get("promotor"))).strip(),
+                    "sitio_web": str(payload.get("sitio_web", existing.get("sitio_web"))).strip(),
+                    "responsable": str(payload.get("responsable") or existing.get("responsable") or updated_by).strip(),
+                    "updated_at": now_str,
+                    "huella_semantica": vec_literal,
+                },
+            )
+        else:
+            conn.execute(
+                text(
+                    """
+                    UPDATE eventos SET
+                        nombre = :nombre,
+                        descripcion = :descripcion,
+                        fecha_inicio = :fecha_inicio,
+                        fecha_fin = :fecha_fin,
+                        horario = :horario,
+                        modalidad = :modalidad,
+                        sede = :sede,
+                        direccion = :direccion,
+                        estado = :estado,
+                        estado_id = :estado_id,
+                        municipio = :municipio,
+                        codigo_postal = :codigo_postal,
+                        latitud = :latitud,
+                        longitud = :longitud,
+                        google_maps_url = :google_maps_url,
+                        categoria = :categoria,
+                        promotor = :promotor,
+                        sitio_web = :sitio_web,
+                        responsable = :responsable,
+                        updated_at = :updated_at
+                    WHERE id = :id
+                    """
+                ),
+                {
+                    "id": event_id,
+                    "nombre": str(payload.get("nombre", existing.get("nombre"))).strip(),
+                    "descripcion": str(payload.get("descripcion", existing.get("descripcion"))).strip(),
+                    "fecha_inicio": str(payload.get("fecha_inicio", existing.get("fecha_inicio")))[:10],
+                    "fecha_fin": str(payload.get("fecha_fin", existing.get("fecha_fin")))[:10],
+                    "horario": str(payload.get("horario", existing.get("horario"))).strip(),
+                    "modalidad": modalidad,
+                    "sede": str(payload.get("sede", existing.get("sede"))).strip(),
+                    "direccion": str(payload.get("direccion", existing.get("direccion"))).strip(),
+                    "estado": st_norm,
+                    "estado_id": st_id,
+                    "municipio": str(payload.get("municipio", existing.get("municipio"))).strip(),
+                    "codigo_postal": str(payload.get("codigo_postal", existing.get("codigo_postal"))).strip(),
+                    "latitud": float(payload.get("latitud", existing.get("latitud", 19.4326))),
+                    "longitud": float(payload.get("longitud", existing.get("longitud", -99.1332))),
+                    "google_maps_url": str(payload.get("google_maps_url", existing.get("google_maps_url"))).strip(),
+                    "categoria": payload.get("categoria", existing.get("categoria")),
+                    "promotor": str(payload.get("promotor", existing.get("promotor"))).strip(),
+                    "sitio_web": str(payload.get("sitio_web", existing.get("sitio_web"))).strip(),
+                    "responsable": str(payload.get("responsable") or existing.get("responsable") or updated_by).strip(),
+                    "updated_at": now_str,
+                },
+            )
+
+    invalidate_cache()
+    export_events_json_snapshot()
+    return True
 
 
 def delete_event(event_id: str) -> None:

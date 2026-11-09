@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Buscador Live Google Maps</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    body {
+      background: transparent;
+      padding: 2px 2px 10px 2px;
+      overflow: visible;
+    }
+    .wrapper {
+      position: relative;
+      width: 100%;
+    }
+    .search-box {
+      display: flex;
+      align-items: center;
+      background: #FFFFFF;
+      border: 1.5px solid #CBD5E1;
+      border-radius: 8px;
+      padding: 0 12px;
+      height: 44px;
+      transition: all 0.2s ease;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    }
+    .search-box:focus-within {
+      border-color: #002F6C;
+      box-shadow: 0 0 0 3px rgba(0, 47, 108, 0.15);
+    }
+    .search-icon {
+      flex-shrink: 0;
+      width: 18px;
+      height: 18px;
+      margin-right: 10px;
+      color: #64748B;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .search-input {
+      flex: 1;
+      border: none;
+      outline: none;
+      font-size: 14px;
+      color: #0F172A;
+      background: transparent;
+      width: 100%;
+    }
+    .search-input::placeholder {
+      color: #94A3B8;
+    }
+    .clear-btn {
+      flex-shrink: 0;
+      background: #E2E8F0;
+      border: none;
+      color: #475569;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      cursor: pointer;
+      font-size: 13px;
+      line-height: 1;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      margin-left: 8px;
+      transition: background 0.15s;
+    }
+    .clear-btn:hover {
+      background: #CBD5E1;
+      color: #0F172A;
+    }
+    .spinner {
+      flex-shrink: 0;
+      width: 16px;
+      height: 16px;
+      border: 2px solid #E2E8F0;
+      border-top-color: #005F73;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+      display: none;
+      margin-left: 8px;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .dropdown {
+      position: absolute;
+      top: 48px;
+      left: 0;
+      right: 0;
+      background: #FFFFFF;
+      border: 1px solid #CBD5E1;
+      border-radius: 8px;
+      box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.18), 0 8px 10px -6px rgba(15, 23, 42, 0.1);
+      max-height: 310px;
+      overflow-y: auto;
+      z-index: 99999;
+      display: none;
+    }
+    .dropdown-header {
+      padding: 6px 12px;
+      font-size: 10.5px;
+      font-weight: 700;
+      color: #64748B;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      background: #F8FAFC;
+      border-bottom: 1px solid #E2E8F0;
+    }
+    .item {
+      padding: 9px 12px;
+      border-bottom: 1px solid #F1F5F9;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      transition: all 0.12s ease;
+    }
+    .item:last-child {
+      border-bottom: none;
+    }
+    .item:hover, .item.selected {
+      background: #F1F5F9;
+      border-left: 3px solid #005F73;
+      padding-left: 9px;
+    }
+    .item-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+      flex: 1;
+    }
+    .item-pin {
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      background: #E0F2FE;
+      color: #0369A1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      font-size: 14px;
+    }
+    .item-pin.verified {
+      background: #DCFCE7;
+      color: #15803D;
+    }
+    .item-text {
+      min-width: 0;
+      flex: 1;
+    }
+    .item-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #0F172A;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .item-subtitle {
+      font-size: 11.5px;
+      color: #64748B;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-top: 1px;
+    }
+    .badge {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 4px;
+      white-space: nowrap;
+      flex-shrink: 0;
+      text-transform: uppercase;
+    }
+    .badge-verified {
+      background: #DCFCE7;
+      color: #166534;
+      border: 1px solid #BBF7D0;
+    }
+    .badge-maps {
+      background: #EFF6FF;
+      color: #1E40AF;
+      border: 1px solid #DBEAFE;
+    }
+    .no-results {
+      padding: 12px;
+      font-size: 12px;
+      color: #64748B;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <div class="search-box">
+      <div class="search-icon">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+          <circle cx="12" cy="10" r="3"></circle>
+        </svg>
+      </div>
+      <input
+        id="search-input"
+        class="search-input"
+        type="text"
+        placeholder="Escribe un recinto o dirección (ej. Autódromo, Poliforum, Reforma 222)..."
+        autocomplete="off"
+      />
+      <div id="spinner" class="spinner"></div>
+      <button id="clear-btn" class="clear-btn" title="Limpiar">&times;</button>
+    </div>
+    <div id="dropdown" class="dropdown"></div>
+  </div>
+
+  <script>
+    let knownVenues = [];
+    let currentResults = [];
+    let selectedIdx = -1;
+    let debounceTimer = null;
+
+    const input = document.getElementById("search-input");
+    const clearBtn = document.getElementById("clear-btn");
+    const spinner = document.getElementById("spinner");
+    const dropdown = document.getElementById("dropdown");
+
+    function sendToStreamlit(type, data) {
+      window.parent.postMessage(Object.assign({
+        isStreamlitMessage: true,
+        type: type
+      }, data || {}), "*");
+    }
+
+    function setFrameHeight(h) {
+      sendToStreamlit("streamlit:setFrameHeight", { height: h });
+    }
+
+    function setComponentValue(val) {
+      sendToStreamlit("streamlit:setComponentValue", { value: val });
+    }
+
+    // Handshake inicial con Streamlit
+    sendToStreamlit("streamlit:componentReady", { apiVersion: 1 });
+    setFrameHeight(56);
+
+    window.addEventListener("message", function(event) {
+      if (event.data && event.data.type === "streamlit:render") {
+        const args = event.data.args || {};
+        if (args.known_venues && Array.isArray(args.known_venues)) {
+          knownVenues = args.known_venues;
+        }
+        if (args.placeholder) {
+          input.placeholder = args.placeholder;
+        }
+        if (args.initial_value && !input.value) {
+          input.value = args.initial_value;
+          clearBtn.style.display = "flex";
+        }
+      }
+    });
+
+    function normalizeText(txt) {
+      return (txt || "")
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .trim();
+    }
+
+    function closeDropdown() {
+      dropdown.style.display = "none";
+      dropdown.innerHTML = "";
+      currentResults = [];
+      selectedIdx = -1;
+      setFrameHeight(56);
+    }
+
+    function selectPlace(place) {
+      input.value = place.sede || place.name || "";
+      closeDropdown();
+      clearBtn.style.display = "flex";
+
+      const payload = {
+        sede: place.sede || place.name || "",
+        direccion: place.direccion || place.address || "",
+        estado: place.estado || place.state || "Ciudad de México",
+        municipio: place.municipio || place.city || "",
+        codigo_postal: place.codigo_postal || place.cp || "",
+        latitud: Number(place.latitud || place.lat || 19.4326),
+        longitud: Number(place.longitud || place.lon || -99.1332),
+        google_maps_url: place.google_maps_url || place.gmaps || `https://www.google.com/maps/search/?api=1&query=${place.latitud || place.lat},${place.longitud || place.lon}`,
+        source: place.source || "Sugerencia Live Google Maps",
+        _ts: Date.now()
+      };
+
+      setComponentValue(payload);
+    }
+
+    function renderResults(results) {
+      currentResults = results;
+      selectedIdx = -1;
+
+      if (!results || results.length === 0) {
+        dropdown.innerHTML = '<div class="no-results">No se encontraron sugerencias automáticas. Puedes completar los datos en el formulario abajo.</div>';
+        dropdown.style.display = "block";
+        setFrameHeight(120);
+        return;
+      }
+
+      dropdown.innerHTML = '<div class="dropdown-header">Sugerencias Disponibles (Haz clic para autocompletar)</div>';
+      
+      results.forEach((item, index) => {
+        const row = document.createElement("div");
+        row.className = "item";
+        row.dataset.index = index;
+
+        const isVerified = item.source === "Catálogo Verificado Bancomext";
+        const pinClass = isVerified ? "item-pin verified" : "item-pin";
+        const pinIcon = isVerified ? "✓" : "📍";
+        const badgeClass = isVerified ? "badge badge-verified" : "badge badge-maps";
+        const badgeLabel = isVerified ? "Verificado" : "Maps / OSM";
+
+        row.innerHTML = `
+          <div class="item-left">
+            <div class="${pinClass}">${pinIcon}</div>
+            <div class="item-text">
+              <div class="item-title">${item.sede}</div>
+              <div class="item-subtitle">${item.direccion}</div>
+            </div>
+          </div>
+          <span class="${badgeClass}">${badgeLabel}</span>
+        `;
+
+        row.addEventListener("click", () => selectPlace(item));
+        dropdown.appendChild(row);
+      });
+
+      dropdown.style.display = "block";
+      const calculatedHeight = Math.min(360, 56 + (results.length * 56) + 35);
+      setFrameHeight(calculatedHeight);
+    }
+
+    async function doSearch(query) {
+      const qNorm = normalizeText(query);
+      if (qNorm.length < 2) {
+        closeDropdown();
+        return;
+      }
+
+      spinner.style.display = "block";
+
+      const matchedLocal = [];
+      // 1. Catálogo local verificado
+      for (const v of knownVenues) {
+        const inName = normalizeText(v.name).includes(qNorm);
+        const inAddr = normalizeText(v.address).includes(qNorm);
+        const inKey = (v.keywords || []).some(k => normalizeText(k).includes(qNorm));
+        if (inName || inAddr || inKey) {
+          matchedLocal.push({
+            sede: v.name,
+            direccion: v.address,
+            estado: v.state,
+            municipio: v.municipio,
+            codigo_postal: v.cp,
+            latitud: v.lat,
+            longitud: v.lon,
+            google_maps_url: v.gmaps,
+            source: "Catálogo Verificado Bancomext"
+          });
+        }
+      }
+
+      // 2. Búsqueda remota typeahead Photon (OSM México bbox)
+      const remoteMatches = [];
+      if (qNorm.length >= 3) {
+        try {
+          const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&bbox=-118.4,14.5,-86.7,32.7&limit=6`;
+          const resp = await fetch(url);
+          if (resp.ok) {
+            const data = await resp.json();
+            const features = data.features || [];
+            for (const f of features) {
+              const p = f.properties || {};
+              const coords = f.geometry && f.geometry.coordinates ? f.geometry.coordinates : [-99.1332, 19.4326];
+              const lon = coords[0];
+              const lat = coords[1];
+              
+              const name = p.name || p.street || query;
+              const street = p.street || "";
+              const housenumber = p.housenumber || "";
+              const muni = p.district || p.city || p.county || p.locality || "";
+              const state = p.state || "Ciudad de México";
+              const cp = p.postcode || "";
+
+              const parts = [
+                (street + " " + housenumber).trim(),
+                muni,
+                state,
+                cp ? "C.P. " + cp : ""
+              ].filter(Boolean);
+              const fullAddress = parts.join(", ") || `${name}, ${state}`;
+
+              // Evitar duplicados exactos con el catálogo local
+              const exists = matchedLocal.some(m => normalizeText(m.sede) === normalizeText(name));
+              if (!exists) {
+                remoteMatches.push({
+                  sede: name,
+                  direccion: fullAddress,
+                  estado: state,
+                  municipio: muni,
+                  codigo_postal: cp,
+                  latitud: Math.round(lat * 10000) / 10000,
+                  longitud: Math.round(lon * 10000) / 10000,
+                  google_maps_url: `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`,
+                  source: "Sugerencia Live Google Maps"
+                });
+              }
+            }
+          }
+        } catch (err) {
+          // Si falla la red remota, seguimos con los locales
+        }
+      }
+
+      spinner.style.display = "none";
+      const combined = [...matchedLocal, ...remoteMatches];
+      renderResults(combined);
+    }
+
+    input.addEventListener("input", function(e) {
+      const val = e.target.value;
+      clearBtn.style.display = val ? "flex" : "none";
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        doSearch(val);
+      }, 200);
+    });
+
+    clearBtn.addEventListener("click", function() {
+      input.value = "";
+      clearBtn.style.display = "none";
+      closeDropdown();
+      input.focus();
+    });
+
+    input.addEventListener("keydown", function(e) {
+      if (dropdown.style.display === "none" || currentResults.length === 0) return;
+
+      const items = dropdown.querySelectorAll(".item");
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        selectedIdx = (selectedIdx + 1) % items.length;
+        updateSelection(items);
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        selectedIdx = (selectedIdx - 1 + items.length) % items.length;
+        updateSelection(items);
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        if (selectedIdx >= 0 && selectedIdx < currentResults.length) {
+          selectPlace(currentResults[selectedIdx]);
+        }
+      } else if (e.key === "Escape") {
+        closeDropdown();
+      }
+    });
+
+    function updateSelection(items) {
+      items.forEach((it, idx) => {
+        if (idx === selectedIdx) {
+          it.classList.add("selected");
+          it.scrollIntoView({ block: "nearest" });
+        } else {
+          it.classList.remove("selected");
+        }
+      });
+    }
+
+    document.addEventListener("click", function(e) {
+      if (!e.target.closest(".wrapper")) {
+        closeDropdown();
+      }
+    });
+  </script>
+</body>
+</html>

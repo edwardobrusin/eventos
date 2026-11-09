@@ -20,6 +20,7 @@ CATEGORIAS_OFICIALES = Literal[
     "Semiconductores y Tech",
     "Agroindustria",
     "Turismo",
+    "Turismo Médico",
     "Dispositivos Médicos",
     "Plásticos y Químicos",
     "Electromovilidad",

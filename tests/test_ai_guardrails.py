@@ -351,3 +351,91 @@ def test_6_anti_hallucination_urls_ssl_and_markdown_sanitization():
     assert ok_ssl is False
 
 
+def test_7_new_requirements_turismo_medico_responsable_edicion_and_maps():
+    """
+    7. Pruebas de verificación de las 4 nuevas modificaciones solicitadas:
+       1) Categoría 'Turismo Médico' en catálogo y esquema Pydantic.
+       2) Campo 'responsable' obligatorio y persistido en BD (registro manual y bandeja IA).
+       3) Sistema de edición (update_event) para corregir typos, sedes, fechas.
+       4) Catálogo enriquecido y estructura live maps (Autódromo Hermanos Rodríguez).
+    """
+    from geo_utils import get_known_venues_minified
+
+    # 1. Categoría "Turismo Médico"
+    assert "Turismo Médico" in db.CATEGORIES
+
+    cand = EventoCandidatoIA(
+        nombre="Cumbre Internacional de Turismo Médico Cancún 2027",
+        descripcion="Foro especializado en infraestructura hospitalaria, certificación Joint Commission y atracción de pacientes.",
+        categoria="Turismo Médico",
+        fecha_inicio=dt.date(2027, 4, 15),
+        fecha_fin=dt.date(2027, 4, 17),
+        modalidad="Presencial",
+        sitio_web="https://turismomedicomx.com",
+        fuente_url="https://turismomedicomx.com/agenda",
+        origen_carril="semilla_oficial",
+        evidencia_texto="Cumbre Internacional de Turismo Médico Cancún 2027 del 15 al 17 de abril de 2027.",
+    )
+    assert cand.categoria == "Turismo Médico"
+
+    # 2. Creación con Responsable
+    test_evt_id = "EVT-TEST-TM-01"
+    try:
+        created_id = db.create_event(
+            {
+                "id": test_evt_id,
+                "nombre": "Cumbre Internacional de Turismo Médico Cancún 2027",
+                "descripcion": "Foro especializado en infraestructura hospitalaria y atracción de pacientes.",
+                "categoria": "Turismo Médico",
+                "fecha_inicio": "2027-04-15",
+                "fecha_fin": "2027-04-17",
+                "responsable": "Lic. Ana Elena Ramos - Promoción Sectorial",
+                "sede": "Cancún Center",
+                "estado": "Quintana Roo",
+            },
+            created_by="aramos",
+        )
+        assert created_id == test_evt_id
+        ev = db.get_event_by_id(test_evt_id)
+        assert ev is not None
+        assert ev["categoria"] == "Turismo Médico"
+        assert ev["responsable"] == "Lic. Ana Elena Ramos - Promoción Sectorial"
+
+        # 3. Edición del evento (corrección de typo, cambio de sede y fechas)
+        ok_update = db.update_event(
+            test_evt_id,
+            {
+                "nombre": "Cumbre Global de Turismo Médico & Salud Cancún 2027",
+                "descripcion": "Descripción corregida: Foro especializado con mesas de financiamiento Bancomext.",
+                "categoria": "Turismo Médico",
+                "fecha_inicio": "2027-04-16",
+                "fecha_fin": "2027-04-18",
+                "sede": "Paradisus Cancún Convention Center",
+                "responsable": "Lic. Ana Elena Ramos (Actualizado)",
+            },
+            updated_by="director.general",
+        )
+        assert ok_update is True
+        ev_mod = db.get_event_by_id(test_evt_id)
+        assert ev_mod["nombre"] == "Cumbre Global de Turismo Médico & Salud Cancún 2027"
+        assert ev_mod["fecha_inicio"] == "2027-04-16"
+        assert ev_mod["sede"] == "Paradisus Cancún Convention Center"
+        assert ev_mod["responsable"] == "Lic. Ana Elena Ramos (Actualizado)"
+
+    finally:
+        engine = db.get_engine()
+        with engine.begin() as conn:
+            conn.execute(text("DELETE FROM eventos WHERE id = :id"), {"id": test_evt_id})
+        db.export_events_json_snapshot()
+
+    # 4. Catálogo minificado para Maps Autocomplete con Autódromo
+    from geo_utils import strip_accents
+    venues = get_known_venues_minified()
+    autodromo = next((v for v in venues if "autodromo" in strip_accents(v["name"]).lower()), None)
+    assert autodromo is not None
+    assert "Hermanos Rodríguez" in autodromo["name"]
+    assert autodromo["lat"] > 19.0
+    assert autodromo["lon"] < -99.0
+
+
+

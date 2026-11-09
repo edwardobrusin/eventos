@@ -237,7 +237,36 @@ KNOWN_VENUES: List[Dict[str, Any]] = [
         "longitud": -99.1643,
         "google_maps_url": "https://www.google.com/maps/search/?api=1&query=World+Trade+Center+Ciudad+de+Mexico",
     },
+    {
+        "keywords": ["autodromo", "hermanos rodriguez", "gran premio", "formula 1", "f1", "magdalena mixhuca", "estadio gnp", "viaducto rio de la piedad"],
+        "sede": "Autódromo Hermanos Rodríguez",
+        "direccion": "Av. Viaducto Río de la Piedad S/N, Granjas México, Iztacalco, 08400 Ciudad de México, CDMX",
+        "estado": "Ciudad de México",
+        "municipio": "Iztacalco",
+        "codigo_postal": "08400",
+        "latitud": 19.4042,
+        "longitud": -99.0905,
+        "google_maps_url": "https://www.google.com/maps/search/?api=1&query=Autodromo+Hermanos+Rodriguez+CDMX",
+    },
 ]
+
+
+def get_known_venues_minified() -> List[Dict[str, Any]]:
+    """Devuelve el catálogo de recintos verificados en formato ligero para autocomplete live."""
+    return [
+        {
+            "name": v["sede"],
+            "address": v["direccion"],
+            "state": v["estado"],
+            "municipio": v["municipio"],
+            "cp": v.get("codigo_postal", ""),
+            "lat": v["latitud"],
+            "lon": v["longitud"],
+            "gmaps": v["google_maps_url"],
+            "keywords": v.get("keywords", []),
+        }
+        for v in KNOWN_VENUES
+    ]
 
 
 def _pt_in_ring(lon: float, lat: float, ring: List[List[float]]) -> bool:

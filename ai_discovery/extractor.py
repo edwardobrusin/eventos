@@ -57,13 +57,14 @@ REGLAS ESTRICTAS DE GOBERNANZA Y ANTI-ALUCINACIÓN:
 5. El campo `evidencia_texto` DEBE ser una cita textual limpia en una sola línea (sin saltos de línea ni
    URLs ni sintaxis Markdown) copiada del texto donde consten explícitamente el nombre del evento, el día/mes
    y el año de 4 dígitos (ej. "Expo Carnes y Lácteos 2027 · 9-11 Feb 2027 · Exposición Internacional de la Industria Cárnica").
-6. Clasifica cada evento exclusivamente en una de las 10 categorías oficiales:
+6. Clasifica cada evento exclusivamente en una de las 11 categorías oficiales:
    - "Comercio Exterior"
    - "Automotriz y Aeroespacial"
    - "Manufactura Avanzada"
    - "Semiconductores y Tech"
    - "Agroindustria"
    - "Turismo"
+   - "Turismo Médico"
    - "Dispositivos Médicos"
    - "Plásticos y Químicos"
    - "Electromovilidad"

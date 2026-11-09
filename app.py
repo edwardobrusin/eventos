@@ -18,6 +18,7 @@ from urllib.parse import urlparse
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+import streamlit.components.v1 as components
 
 import database as db
 from geo_utils import (
@@ -28,12 +29,16 @@ from geo_utils import (
     ensure_point_inside_state,
     format_date_mx,
     format_date_range_mx,
+    get_known_venues_minified,
     get_mexico_today,
     get_state_map_center_and_zoom,
     get_state_zoom_bounds,
     parse_google_maps_or_search,
 )
 from pdf_utils import generate_agenda_pdf, generate_calendar_grid_pdf
+
+_MAPS_AC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "components", "maps_autocomplete")
+_maps_autocomplete = components.declare_component("maps_autocomplete", path=_MAPS_AC_DIR)
 
 # ---------------------------------------------------------------------------
 # CONFIGURACIÓN DE PÁGINA E INICIALIZACIÓN
@@ -683,8 +688,9 @@ def open_event_detail_dialog(event_id: str) -> None:
                 </span>
             </div>
             <h3 style="margin:2px 0 4px 0; font-size:1.22rem; color:#0F172A;">{ev['nombre']}</h3>
-            <div style="font-size:0.80rem; color:#475569; font-weight:600;">
-                Promotor: {ev.get('promotor', 'NAFIN / BANCOMEXT')}
+            <div style="font-size:0.80rem; color:#475569; font-weight:600; display:flex; gap:16px; flex-wrap:wrap; margin-top:3px;">
+                <span>Promotor: <strong>{ev.get('promotor', 'NAFIN / BANCOMEXT')}</strong></span>
+                <span>Responsable: <strong style="color:#002F6C;">{ev.get('responsable') or ev.get('creado_por', 'NAFIN / BANCOMEXT')}</strong></span>
             </div>
         </div>
         """,
@@ -733,12 +739,187 @@ def open_event_detail_dialog(event_id: str) -> None:
     role_meta = get_active_role_meta()
     if role_meta["puede_registrar_eventos"]:
         st.markdown("---")
-        col_del, _ = st.columns([1, 2])
+        col_edit, col_del = st.columns([1, 1])
+        with col_edit:
+            if st.button("✏️ Editar Evento", key=f"edit_ev_{ev['id']}", type="primary", width="stretch"):
+                st.session_state.editing_event_id = ev["id"]
+                st.rerun()
         with col_del:
-            if st.button("Eliminar Evento", key=f"del_ev_{ev['id']}", width="stretch"):
+            if st.button("🗑️ Eliminar Evento", key=f"del_ev_{ev['id']}", width="stretch"):
                 db.delete_event(ev["id"])
                 get_cached_events.clear()
                 st.rerun()
+
+
+@st.dialog("Editar Evento Institucional", width="large")
+def open_edit_event_dialog(event_id: str) -> None:
+    ev = db.get_event_by_id(event_id)
+    if not ev:
+        st.warning("Evento no encontrado.")
+        if st.button("Cerrar"):
+            st.session_state.editing_event_id = None
+            st.rerun()
+        return
+
+    st.markdown(
+        f"""
+        <div style="padding:10px 14px; background:#F8FAFC; border:1px solid #CBD5E1; border-radius:8px; margin-bottom:14px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span style="font-weight:700; color:#002F6C; font-size:1.0rem;">Folio: {ev['id']}</span>
+                <span class="ev-badge" style="color:#005F73; background:#ECFEFF; border-color:#A5F3FC;">{ev['categoria']}</span>
+            </div>
+            <div style="font-size:0.80rem; color:#64748B; margin-top:3px;">
+                Creado originalmente por: <strong>{ev.get('creado_por', 'sistema')}</strong> · Registrado el {str(ev.get('created_at', ''))[:10]}
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    with st.expander("📍 Cambiar Recinto o Dirección (Buscador Live Google Maps)", expanded=False):
+        st.caption("Escribe el nuevo recinto o dirección para autocompletar automáticamente coordenadas, estado y C.P.")
+        res_edit_geo = _maps_autocomplete(
+            known_venues=get_known_venues_minified(),
+            placeholder="Escribe la nueva sede (ej. Autódromo, Poliforum, Reforma 222)...",
+            key=f"edit_maps_ac_{event_id}",
+        )
+        if res_edit_geo and isinstance(res_edit_geo, dict) and res_edit_geo.get("_ts"):
+            if res_edit_geo.get("_ts") != st.session_state.get(f"_edit_geo_ts_{event_id}"):
+                st.session_state[f"_edit_geo_ts_{event_id}"] = res_edit_geo["_ts"]
+                st.session_state[f"edit_geo_{event_id}"] = res_edit_geo
+                st.rerun()
+
+    override_geo = st.session_state.get(f"edit_geo_{event_id}", {})
+
+    current_sede = override_geo.get("sede") or ev.get("sede", "")
+    current_estado = override_geo.get("estado") or ev.get("estado", "Ciudad de México")
+    current_muni = override_geo.get("municipio") or ev.get("municipio", "")
+    current_cp = override_geo.get("codigo_postal") or ev.get("codigo_postal", "")
+    current_dir = override_geo.get("direccion") or ev.get("direccion", "")
+    current_gmaps = override_geo.get("google_maps_url") or ev.get("google_maps_url", "")
+    current_lat = float(override_geo.get("latitud") if override_geo.get("latitud") is not None else ev.get("latitud", 19.4326))
+    current_lon = float(override_geo.get("longitud") if override_geo.get("longitud") is not None else ev.get("longitud", -99.1332))
+
+    with st.form(f"edit_event_form_{event_id}", clear_on_submit=False):
+        ec1, ec2, ec3 = st.columns([3.0, 1.5, 1.5])
+        with ec1:
+            ed_nombre = st.text_input("Nombre del Evento *", value=ev.get("nombre", ""))
+        with ec2:
+            cat_list = db.CATEGORIES
+            cur_cat = ev.get("categoria", cat_list[0])
+            cat_idx = cat_list.index(cur_cat) if cur_cat in cat_list else 0
+            ed_cat = st.selectbox("Categoría *", options=cat_list, index=cat_idx)
+        with ec3:
+            default_resp = ev.get("responsable") or ev.get("creado_por") or (st.session_state.auth_user or {}).get("nombre_completo") or (st.session_state.auth_user or {}).get("username") or "Director Bancomext"
+            ed_responsable = st.text_input("Responsable *", value=default_resp)
+
+        ed1, ed2, ed3, ed4 = st.columns([1.3, 1.3, 1.4, 1.3])
+        try:
+            d_ini_val = dt.date.fromisoformat(str(ev.get("fecha_inicio", ""))[:10])
+        except Exception:
+            d_ini_val = dt.date.today()
+        try:
+            d_fin_val = dt.date.fromisoformat(str(ev.get("fecha_fin", ""))[:10])
+        except Exception:
+            d_fin_val = d_ini_val
+
+        with ed1:
+            ed_d_ini = st.date_input("Fecha Inicio *", value=d_ini_val, format="DD/MM/YYYY")
+        with ed2:
+            ed_d_fin = st.date_input("Fecha Fin *", value=d_fin_val, format="DD/MM/YYYY")
+        with ed3:
+            ed_horario = st.text_input("Horario *", value=ev.get("horario", "09:00 - 18:00 hrs"))
+        with ed4:
+            mod_opts = ["Presencial", "En Línea", "Híbrido"]
+            cur_mod = ev.get("modalidad", "Presencial")
+            mod_idx = mod_opts.index(cur_mod) if cur_mod in mod_opts else 0
+            ed_mod = st.selectbox("Modalidad *", options=mod_opts, index=mod_idx)
+
+        el1, el2, el3, el4 = st.columns([1.8, 1.4, 1.4, 0.9])
+        state_keys = list(MEXICO_STATES.keys())
+        st_idx = state_keys.index(current_estado) if current_estado in state_keys else state_keys.index("Ciudad de México")
+        with el1:
+            ed_sede = st.text_input("Recinto / Sede", value=current_sede)
+        with el2:
+            ed_estado = st.selectbox("Estado", options=state_keys, index=st_idx)
+        with el3:
+            ed_muni = st.text_input("Municipio / Alcaldía", value=current_muni)
+        with el4:
+            ed_cp = st.text_input("C.P.", value=current_cp)
+
+        ea1, ea2, ea3, ea4 = st.columns([2.4, 2.0, 0.9, 0.9])
+        with ea1:
+            ed_dir = st.text_input("Dirección", value=current_dir)
+        with ea2:
+            ed_gmaps = st.text_input("Link Google Maps", value=current_gmaps)
+        with ea3:
+            ed_lat = st.number_input("Latitud", value=current_lat, format="%.4f")
+        with ea4:
+            ed_lon = st.number_input("Longitud", value=current_lon, format="%.4f")
+
+        ep1, ep2 = st.columns([2, 2])
+        with ep1:
+            ed_promotor = st.text_input("Promotor", value=ev.get("promotor", "NAFIN / BANCOMEXT"))
+        with ep2:
+            ed_web = st.text_input("Sitio Web", value=ev.get("sitio_web", ""))
+
+        ed_desc = st.text_area("Descripción *", value=ev.get("descripcion", ""), height=90)
+
+        col_save, col_cancel = st.columns([2, 1])
+        with col_save:
+            btn_save = st.form_submit_button("💾 Guardar Cambios", type="primary", width="stretch")
+        with col_cancel:
+            btn_cancel = st.form_submit_button("Cancelar", width="stretch")
+
+        if btn_save:
+            if not ed_nombre.strip() or not ed_desc.strip():
+                st.error("⚠️ El nombre y la descripción son obligatorios.")
+            elif not ed_responsable.strip():
+                st.error("⚠️ El campo 'Responsable' es obligatorio.")
+            elif ed_d_fin < ed_d_ini:
+                st.error("⚠️ La fecha fin no puede ser anterior a la fecha inicio.")
+            else:
+                final_gmaps = ed_gmaps.strip()
+                if not final_gmaps and ed_mod != "En Línea":
+                    final_gmaps = f"https://www.google.com/maps/search/?api=1&query={ed_lat},{ed_lon}"
+
+                current_user = (st.session_state.auth_user or {}).get("username", "director")
+                db.update_event(
+                    event_id,
+                    {
+                        "nombre": ed_nombre.strip(),
+                        "descripcion": ed_desc.strip(),
+                        "fecha_inicio": ed_d_ini.isoformat(),
+                        "fecha_fin": ed_d_fin.isoformat(),
+                        "horario": ed_horario.strip(),
+                        "modalidad": ed_mod,
+                        "sede": ed_sede.strip(),
+                        "direccion": ed_dir.strip(),
+                        "estado": ed_estado,
+                        "municipio": ed_muni.strip(),
+                        "codigo_postal": ed_cp.strip(),
+                        "latitud": ed_lat,
+                        "longitud": ed_lon,
+                        "google_maps_url": final_gmaps,
+                        "categoria": ed_cat,
+                        "promotor": ed_promotor.strip(),
+                        "sitio_web": ed_web.strip(),
+                        "responsable": ed_responsable.strip(),
+                    },
+                    updated_by=current_user,
+                )
+                st.session_state.editing_event_id = None
+                st.session_state.pop(f"edit_geo_{event_id}", None)
+                st.session_state.pop(f"_edit_geo_ts_{event_id}", None)
+                get_cached_events.clear()
+                st.success("✅ Cambios guardados correctamente.")
+                st.rerun()
+
+        if btn_cancel:
+            st.session_state.editing_event_id = None
+            st.session_state.pop(f"edit_geo_{event_id}", None)
+            st.session_state.pop(f"_edit_geo_ts_{event_id}", None)
+            st.rerun()
 
 
 def _clean_html_text(raw_val: Any) -> str:
@@ -862,11 +1043,14 @@ def open_review_staging_dialog(staging_id: str) -> None:
         with c_a4:
             in_lon = st.number_input("Longitud", value=default_lon, format="%.4f")
 
-        c_p1, c_p2 = st.columns([2, 2])
+        c_p1, c_p2, c_resp = st.columns([1.5, 1.5, 1.5])
         with c_p1:
             in_promotor = st.text_input("Promotor", value=stg.get("promotor") or "NAFIN / BANCOMEXT")
         with c_p2:
             in_web = st.text_input("Sitio Web", value=stg.get("sitio_web") or stg.get("fuente_url") or "")
+        with c_resp:
+            default_approver = (st.session_state.auth_user or {}).get("nombre_completo") or (st.session_state.auth_user or {}).get("username") or "Director Bancomext"
+            in_responsable = st.text_input("Responsable *", value=default_approver)
 
         in_desc = st.text_area("Descripción *", value=stg.get("descripcion") or "", height=90)
 
@@ -878,6 +1062,8 @@ def open_review_staging_dialog(staging_id: str) -> None:
         if confirm_btn:
             if not in_nombre.strip() or not in_desc.strip():
                 st.error("El nombre y la descripción son obligatorios.")
+            elif not in_responsable.strip():
+                st.error("⚠️ El campo 'Responsable' es obligatorio para saber quién autoriza y carga el evento.")
             elif in_d_fin < in_d_ini:
                 st.error("La fecha fin no puede ser menor que la fecha inicio.")
             else:
@@ -907,6 +1093,7 @@ def open_review_staging_dialog(staging_id: str) -> None:
                         "categoria": in_cat,
                         "promotor": in_promotor.strip(),
                         "sitio_web": in_web.strip(),
+                        "responsable": in_responsable.strip(),
                     },
                     reviewed_by=current_username,
                 )
@@ -1097,6 +1284,9 @@ if role_meta["puede_registrar_eventos"]:
 if role_meta["puede_administrar_usuarios"]:
     tab_titles.append("Administración")
 
+if st.session_state.get("editing_event_id"):
+    open_edit_event_dialog(st.session_state.editing_event_id)
+
 tabs = st.tabs(tab_titles)
 tab_idx = 0
 
@@ -1203,7 +1393,7 @@ with tabs[tab_idx]:
             st.info("Sin registros.")
         else:
             for ev in filtered_events:
-                r_col1, r_col2 = st.columns([6.3, 0.9])
+                r_col1, r_col2 = st.columns([6.0, 1.2]) if role_meta["puede_registrar_eventos"] else st.columns([6.3, 0.9])
                 with r_col1:
                     opacity_style = "opacity: 0.72;" if ev["status_code"] == "EXPIRADO" else ""
                     st.markdown(
@@ -1229,8 +1419,17 @@ with tabs[tab_idx]:
                         unsafe_allow_html=True,
                     )
                 with r_col2:
-                    if st.button("Ficha", key=f"row_btn_completa_{ev['id']}", width="stretch"):
-                        open_event_detail_dialog(ev["id"])
+                    if role_meta["puede_registrar_eventos"]:
+                        bf1, be1 = st.columns([1.1, 0.9])
+                        with bf1:
+                            if st.button("Ficha", key=f"row_btn_completa_{ev['id']}", width="stretch"):
+                                open_event_detail_dialog(ev["id"])
+                        with be1:
+                            if st.button("✏️", key=f"row_btn_edit_comp_{ev['id']}", width="stretch", help="Editar evento"):
+                                open_edit_event_dialog(ev["id"])
+                    else:
+                        if st.button("Ficha", key=f"row_btn_completa_{ev['id']}", width="stretch"):
+                            open_event_detail_dialog(ev["id"])
 
     # -----------------------------------------------------------------------
     # VISTA 1B: AGENDA MENSUAL (CONECTADA AL BUSCADOR Y FLECHAS DE MES)
@@ -1248,7 +1447,7 @@ with tabs[tab_idx]:
             st.info(f"Sin eventos programados para {nombre_mes} {year_num}.")
         else:
             for ev in monthly_events:
-                r_col1, r_col2 = st.columns([6.3, 0.9])
+                r_col1, r_col2 = st.columns([6.0, 1.2]) if role_meta["puede_registrar_eventos"] else st.columns([6.3, 0.9])
                 with r_col1:
                     opacity_style = "opacity: 0.72;" if ev["status_code"] == "EXPIRADO" else ""
                     st.markdown(
@@ -1274,8 +1473,17 @@ with tabs[tab_idx]:
                         unsafe_allow_html=True,
                     )
                 with r_col2:
-                    if st.button("Ficha", key=f"row_btn_mensual_{ev['id']}", width="stretch"):
-                        open_event_detail_dialog(ev["id"])
+                    if role_meta["puede_registrar_eventos"]:
+                        bf2, be2 = st.columns([1.1, 0.9])
+                        with bf2:
+                            if st.button("Ficha", key=f"row_btn_mensual_{ev['id']}", width="stretch"):
+                                open_event_detail_dialog(ev["id"])
+                        with be2:
+                            if st.button("✏️", key=f"row_btn_edit_mens_{ev['id']}", width="stretch", help="Editar evento"):
+                                open_edit_event_dialog(ev["id"])
+                    else:
+                        if st.button("Ficha", key=f"row_btn_mensual_{ev['id']}", width="stretch"):
+                            open_event_detail_dialog(ev["id"])
 
     # -----------------------------------------------------------------------
     # VISTA 1C: CALENDARIO INTERACTIVO (CÁLCULO SEMANAL DINÁMICO DE LUNES A DOMINGO)
@@ -1684,23 +1892,54 @@ if role_meta["puede_registrar_eventos"]:
     with tabs[tab_idx]:
         tab_idx += 1
 
-        g_col1, g_col2 = st.columns([4.2, 1.3])
-        with g_col1:
-            gmaps_query = st.text_input(
-                "Buscador Google Maps",
-                placeholder="Recinto, dirección o enlace de Google Maps...",
-            )
-        with g_col2:
-            st.write("")
-            if st.button("Extraer Ubicación", width="stretch", type="primary"):
-                res = parse_google_maps_or_search(gmaps_query)
-                if res.get("ok"):
-                    st.session_state.parsed_geo = res
-                    st.success(
-                        f"{res['sede']} -> {res['municipio']}, {res['estado']} ({res['latitud']}, {res['longitud']})"
-                    )
-                else:
-                    st.warning(res.get("error", "No fue posible geocodificar la ubicación."))
+        st.markdown("#### 📍 Buscador Live Google Maps")
+        st.caption(
+            "Escribe cualquier recinto o dirección en México (ej. *Autódromo*, *Poliforum*, *Reforma 222*, *WTC*) "
+            "y selecciona la sugerencia instantánea estilo delivery para autocompletar automáticamente el recinto, dirección, estado, municipio, C.P. y coordenadas."
+        )
+
+        selected_live_geo = _maps_autocomplete(
+            known_venues=get_known_venues_minified(),
+            placeholder="Escribe un recinto o dirección (ej. Autódromo, Poliforum, Reforma 222)...",
+            key="reg_live_maps_ac",
+        )
+        if selected_live_geo and isinstance(selected_live_geo, dict) and selected_live_geo.get("_ts"):
+            if selected_live_geo.get("_ts") != st.session_state.get("_last_reg_geo_ts"):
+                st.session_state._last_reg_geo_ts = selected_live_geo["_ts"]
+                st.session_state.parsed_geo = selected_live_geo
+                st.rerun()
+
+        with st.expander("🔗 O consulta manual por enlace o texto de Google Maps", expanded=False):
+            g_col1, g_col2 = st.columns([4.2, 1.3])
+            with g_col1:
+                gmaps_query = st.text_input(
+                    "Buscador manual Google Maps",
+                    placeholder="Recinto, dirección o enlace de Google Maps...",
+                    label_visibility="collapsed",
+                )
+            with g_col2:
+                if st.button("Extraer Ubicación", width="stretch", type="primary"):
+                    res = parse_google_maps_or_search(gmaps_query)
+                    if res.get("ok"):
+                        st.session_state.parsed_geo = res
+                        st.success(
+                            f"{res['sede']} -> {res['municipio']}, {res['estado']} ({res['latitud']}, {res['longitud']})"
+                        )
+                    else:
+                        st.warning(res.get("error", "No fue posible geocodificar la ubicación."))
+
+        if st.session_state.parsed_geo:
+            p_geo = st.session_state.parsed_geo
+            c_geo1, c_geo2 = st.columns([4.8, 1.2])
+            with c_geo1:
+                st.success(
+                    f"📍 **Ubicación autocompletada**: **{p_geo.get('sede')}** — "
+                    f"*{p_geo.get('direccion')}* ({p_geo.get('municipio')}, {p_geo.get('estado')} | C.P. {p_geo.get('codigo_postal') or 'S/N'})"
+                )
+            with c_geo2:
+                if st.button("Limpiar Ubicación", key="btn_clear_reg_geo", width="stretch"):
+                    st.session_state.parsed_geo = None
+                    st.rerun()
 
         geo_defaults = st.session_state.parsed_geo or {
             "sede": "",
@@ -1721,7 +1960,7 @@ if role_meta["puede_registrar_eventos"]:
             )
 
         with st.form("register_event_form", clear_on_submit=True):
-            fc1, fc2, fc3 = st.columns([1.2, 3.2, 1.6])
+            fc1, fc2, fc3, fc4 = st.columns([1.1, 2.7, 1.4, 1.3])
             with fc1:
                 next_id = db.generate_next_event_id()
                 ev_id_in = st.text_input("ID", value=next_id)
@@ -1729,6 +1968,13 @@ if role_meta["puede_registrar_eventos"]:
                 ev_nombre_in = st.text_input("Nombre del Evento *")
             with fc3:
                 ev_cat_in = st.selectbox("Categoría *", options=db.CATEGORIES)
+            with fc4:
+                default_user = (
+                    (st.session_state.auth_user or {}).get("nombre_completo")
+                    or (st.session_state.auth_user or {}).get("username")
+                    or ""
+                )
+                ev_resp_in = st.text_input("Responsable *", value=default_user)
 
             fd1, fd2, fd3, fd4 = st.columns([1.3, 1.3, 1.4, 1.3])
             with fd1:
@@ -1778,6 +2024,8 @@ if role_meta["puede_registrar_eventos"]:
             if save_ev_btn:
                 if not ev_nombre_in.strip() or not ev_desc_in.strip():
                     st.error("⚠️ Nombre y descripción son campos obligatorios. No es posible guardar el formulario vacío.")
+                elif not ev_resp_in.strip():
+                    st.error("⚠️ El campo 'Responsable' es obligatorio para saber quién cargó o registró el evento.")
                 elif d_end < d_start:
                     st.error("⚠️ La fecha fin no puede ser anterior a la fecha inicio.")
                 else:
@@ -1816,8 +2064,9 @@ if role_meta["puede_registrar_eventos"]:
                                     "categoria": ev_cat_in,
                                     "promotor": ev_promotor_in,
                                     "sitio_web": ev_web_in,
+                                    "responsable": ev_resp_in.strip(),
                                 },
-                                created_by=(st.session_state.auth_user or {}).get("username", "director"),
+                                created_by=ev_resp_in.strip() or (st.session_state.auth_user or {}).get("username", "director"),
                             )
                             st.session_state.parsed_geo = None
                             get_cached_events.clear()
