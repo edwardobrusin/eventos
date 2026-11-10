@@ -759,13 +759,14 @@ def build_ics_content(ev: Dict[str, Any]) -> str:
         if ev.get("modalidad") != "En Línea"
         else "En Línea"
     )
+    clean_desc = (ev.get("descripcion", "") or "").replace("\r", "").replace("\n", "\\n")
     desc = (
         f"ID: {ev.get('id', '')}\\n"
         f"Categoría: {ev.get('categoria', '')}\\n"
         f"Promotor: {ev.get('promotor', 'NAFIN / BANCOMEXT')}\\n"
         f"Horario: {ev.get('horario', '')}\\n"
         f"Google Maps: {ev.get('google_maps_url', '')}\\n\\n"
-        f"{(ev.get('descripcion', '') or '').replace(chr(10), '\\n')}"
+        f"{clean_desc}"
     )
 
     lines = [
